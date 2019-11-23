@@ -1,0 +1,330 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""kafka-connect-cli: Kafka connect command line interface (CLI) around the Kafka Connect REST Interface to manage connectors."""
+
+__author__    = "Mohammed Amine GARMES"
+__copyright__ = "Copyright (c) 2019, Mohammed amine GARMES"
+__license__ = """
+Copyright (c) 2019, Mohammed amine GARMES
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+"""
+__version__ = "1.0"
+
+import urllib2
+import ssl
+import json
+import sys
+import os
+
+
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE
+
+def http_exec(request):
+	res = None
+	try:
+		res = urllib2.urlopen(request, context=ctx)
+		return res.read()
+	except urllib2.HTTPError as e:
+		if e.code >= 400 and e.code <= 500:
+			return e.read()
+		else:
+			out = {'error_code': e.code, 'message': str(e)}
+			return json.dumps(out)
+	except Exception, exp:
+		out = {'error_code': 1, 'message': str(e)}
+		return json.dumps(out)
+
+def http(url, method, data):
+	if data == None:
+		request = urllib2.Request(url)
+	else:
+		json_data = json.dumps(json.loads(data))
+		request = urllib2.Request(url, data=json_data)
+	request.get_method = lambda: method
+	request.add_header('Content-Type', 'application/json')
+	return json.loads(http_exec(request))
+
+def http_post(url, data):
+	return http(url, 'POST', data)
+
+def http_put(url, data):
+	return http(url, 'PUT', data)
+
+def http_delete(url, data):
+	return http(url, 'DELETE', data)
+
+def http_get(url):
+	return http(url, 'GET', None)
+
+def print_pretty(data):
+	print json.dumps(data, sort_keys=True, indent=4)
+
+def create_file(file_name, data):
+	with open(file_name, 'w') as outfile:
+		json.dump(data, outfile, sort_keys=True, indent=4)
+
+def error(code, message):
+	out = {'error_code': code, 'message': message}
+	return json.loads(json.dumps(out))
+
+#-------------Kafka Connect API -------------------------------------
+def connect_info(connect_url):
+	url = connect_url + '/'
+	return http_get(url)
+
+def get_connectors(connect_url):
+	url = connect_url + '/connectors'
+	response = urllib2.urlopen(url, context=ctx).read()
+	connectors = json.loads(response)
+	return connectors
+
+def get_connector_info(connect_url, connector_name):
+	url = connect_url + '/connectors/'+ connector_name
+	return http_get(url)
+
+def add_connector(connect_url, connector_name, configuration):
+	url = connect_url + '/connectors/'+ connector_name + '/config'
+	return http_put(url, configuration)
+
+def delete_connetor(connect_url, connector_name):
+	url = connect_url + '/connectors/'+ connector_name + '/'
+	return http_delete(url, None)
+
+def status(connect_url, connector_name):
+	url = connect_url + '/connectors/'+ connector_name + '/status'
+	return http_get(url)
+
+def pause(connect_url, connector_name):
+	url = connect_url + '/connectors/'+ connector_name + '/pause'
+	return http_put(url, None)
+
+def resume(connect_url, connector_name):
+	url = connect_url + '/connectors/'+ connector_name + '/resume'
+	return http_put(url, None)
+
+def restart(connect_url, connector_name):
+	url = connect_url + '/connectors/'+ connector_name + '/restart'
+	return http_post(url, None)
+
+def validate(connect_url, plugin_name, configuration):
+	url = connect_url + '/connector-plugins/'+ plugin_name + '/config/validate'
+	return http_put(url, configuration)
+
+def plugins(connect_url):
+	url = connect_url + '/connector-plugins/'
+	return http_get(url)
+
+def help():
+	print(""" 
+  Command: list
+  list active connectors names.
+  
+  Command: get
+  get the configuration of the specified connector.
+  
+  Command: delete
+  remove the specified connector.
+  
+  Command: create
+  create the specified connector with the config from stdin; the connector cannot already exist.
+  
+  Command: run
+  create or update the specified connector with the config from stdin.
+ 
+  Command: status
+  get connector and it's task(s) state(s).
+  
+  Command: plugins
+  list the available connector class plugins on the classpath.
+  
+  Command: config
+  list the configurations for the specified connector.
+  
+  Command: pause
+  pause the specified connector.
+  
+  Command: restart
+  restart the specified connector.
+  
+  Command: resume
+  resume the specified connector.
+  
+  Command: validate
+  validate the connector config from stdin against a connector class plugin on the classpath.
+
+  Command: backup
+  Create a configuration backup for all connectors.
+  
+""")
+
+def args_min(size):
+	if len(sys.argv) < size:
+		print(help_msg)
+		exit(1)
+
+HELP = "help"
+PING = "ping"
+LIST = "list"
+GET = "get"
+STATUS = "status"
+DELETE = "delete"
+CREATE = "create"
+CONFIG = "config"
+RUN = "run"
+PLUGINS = "plugins"
+VALIDATE = "validate"
+
+RESTAT = "restart"
+PAUSE = "pause"
+RESUME = "resume"
+
+BACKUP = "backup" 
+
+
+options = [ HELP, PING, LIST, GET, STATUS, DELETE, CREATE, CONFIG, RUN, PLUGINS,
+ VALIDATE, RESTAT, PAUSE, RESUME, BACKUP]
+help_msg = "Usage: kafka-connect-ci [" + "|".join(options) + "] [<connector-name>]"
+def main():
+
+	if "KAFKA_CONNECT_URL" not in os.environ:
+		print("messing KAFKA CONNECT URL")
+		print("export KAFKA_CONNECT_URL=\"http://myserver:myport\"")
+		exit(2)
+	else:
+		url = os.environ.get('KAFKA_CONNECT_URL')
+
+
+	args_min(2)
+
+	# check option
+	cmd = sys.argv[1]
+	if cmd not in options:
+		print(help_msg)
+
+	# help
+	if cmd == HELP:
+		help()
+
+	# ping
+	if cmd == PING:
+		print_pretty(connect_info(url))
+
+	# list plugins
+	if cmd == PLUGINS:
+		for plugin in plugins(url) :
+			print_pretty(plugin)
+
+	# list
+	if cmd == LIST:
+		for connector in get_connectors(url) :
+			print connector
+
+	# describe
+	if cmd == GET:
+		args_min(3)
+		connector = sys.argv[2]
+		print_pretty(get_connector_info(url, connector))
+
+	# describe conf
+	if cmd == CONFIG:
+		args_min(3)
+		connector = sys.argv[2]
+		res = get_connector_info(url, connector)
+		if "config" in res:
+			print_pretty(res['config'])
+		else:
+			print_pretty(res)
+
+	# Backup conf
+	if cmd == BACKUP:
+		args_min(2)
+		for connector in get_connectors(url) :
+			print "====[{0}]====".format(connector)
+			res = get_connector_info(url, connector)
+			if "config" in res:
+				file_path = res['config']['name']+'.json'
+				create_file(file_path, res['config'])
+			else:
+				print_pretty(res)
+
+	# status
+	if cmd == STATUS:
+		args_min(3)
+		connector = sys.argv[2]
+		print_pretty(status(url, connector))
+	
+	# create
+	if cmd == CREATE:
+		args_min(3)
+		connector = sys.argv[2]
+		res = get_connector_info(url, connector)
+		if "config" in res:
+			print_pretty(error(1, 'Connector already exist'))
+		else:
+			print_pretty(add_connector(url, connector, sys.stdin.read()))
+
+	# create or update
+	if cmd == RUN:
+		args_min(3)
+		connector = sys.argv[2]
+		print_pretty(add_connector(url, connector, sys.stdin.read()))
+
+	# delete
+	if cmd == DELETE:
+		args_min(3)
+		connector = sys.argv[2]
+		print_pretty(delete_connetor(url, connector))
+
+	# vlidate 
+	if cmd == VALIDATE:
+		args_min(3)
+		plugin_name = sys.argv[2]
+		print_pretty(validate(url, plugin_name, sys.stdin.read()))
+
+	# pause
+	if cmd == PAUSE:
+		args_min(3)
+		connector = sys.argv[2]
+		pause(url, connector)
+
+	# resume
+	if cmd == RESUME:
+		args_min(3)
+		connector = sys.argv[2]
+		resume(url, connector)
+
+	# restart
+	if cmd == RESTAT:
+		args_min(3)
+		connector = sys.argv[2]
+		restart(url, connector)
+
+	
+
+
+if __name__ == '__main__':
+    main()
