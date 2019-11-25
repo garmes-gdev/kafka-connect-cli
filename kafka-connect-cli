@@ -55,7 +55,7 @@ def http_exec(request):
 			out = {'error_code': e.code, 'message': str(e)}
 			return json.dumps(out)
 	except Exception, exp:
-		out = {'error_code': 1, 'message': str(e)}
+		out = {'error_code': 1, 'message': str(exp)}
 		return json.dumps(out)
 
 def http(url, method, data):
@@ -98,9 +98,7 @@ def connect_info(connect_url):
 
 def get_connectors(connect_url):
 	url = connect_url + '/connectors'
-	response = urllib2.urlopen(url, context=ctx).read()
-	connectors = json.loads(response)
-	return connectors
+	return http_get(url)
 
 def get_connector_info(connect_url, connector_name):
 	url = connect_url + '/connectors/'+ connector_name
